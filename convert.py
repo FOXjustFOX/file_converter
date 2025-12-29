@@ -85,7 +85,35 @@ def convert_video(input_path, output_path, reduce_mode=False, enhance_mode=False
     except Exception as e:
         safe_print(f"❌ Video Error: {e}")
 
-# --- 3. DOCS LOGIC ---
+# --- 3. AUDIO LOGIC ---
+def convert_audio(input_path, output_path, reduce_mode=False, enhance_mode=False):
+    try:
+        if subprocess.call(["which", "ffmpeg"], stdout=subprocess.DEVNULL) != 0:
+            safe_print("❌ Error: FFmpeg is not installed.")
+            return
+
+        cmd = ["ffmpeg", "-i", input_path, "-y"]
+        out_ext = os.path.splitext(output_path)[1].lower()
+
+        if reduce_mode:
+            if out_ext == '.flac':
+                # Max compression for FLAC
+                cmd.extend(["-compression_level", "12"])
+            elif out_ext == '.mp3':
+                # Standard bitrate for MP3
+                cmd.extend(["-b:a", "128k"])
+            elif out_ext in ['.m4a', '.aac']:
+                # Standard bitrate for AAC
+                cmd.extend(["-c:a", "aac", "-b:a", "128k"])
+        
+        cmd.append(output_path)
+        
+        # Run silently
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    except Exception as e:
+        safe_print(f"❌ Audio Error: {e}")
+
+# --- 4. DOCS LOGIC ---
 def convert_docs(input_path, output_path, reduce_mode=False, enhance_mode=False):
     try:
         in_ext = os.path.splitext(input_path)[1].lower()
@@ -169,7 +197,7 @@ def convert_docs(input_path, output_path, reduce_mode=False, enhance_mode=False)
     except Exception as e:
         safe_print(f"❌ Doc Error: {e}")
 
-# --- 4. DATA LOGIC ---
+# --- 5. DATA LOGIC ---
 def convert_data(input_path, output_path, reduce_mode=False, enhance_mode=False):
     try:
         in_ext = os.path.splitext(input_path)[1].lower()
@@ -189,11 +217,13 @@ def convert_data(input_path, output_path, reduce_mode=False, enhance_mode=False)
 def get_converter(input_ext, output_ext):
     img_exts = {'.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tiff'}
     vid_exts = {'.mp4', '.mkv', '.mov', '.avi', '.webm'}
+    audio_exts = {'.mp3', '.wav', '.aac', '.flac', '.ogg', '.m4a'}
     data_exts = {'.csv', '.json', '.xlsx'}
     doc_exts  = {'.docx', '.pdf', '.md', '.html', '.txt', '.mdx'}
 
     if input_ext in img_exts and output_ext in img_exts: return convert_image
     if input_ext in vid_exts and output_ext in vid_exts: return convert_video
+    if input_ext in audio_exts and output_ext in audio_exts: return convert_audio
     if input_ext in data_exts and output_ext in data_exts: return convert_data
     if input_ext in doc_exts and output_ext in doc_exts: return convert_docs
     return None
