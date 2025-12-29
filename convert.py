@@ -91,12 +91,12 @@ def convert_docs(input_path, output_path, reduce_mode=False, enhance_mode=False)
         content = ""
 
         # Extract
-        if in_ext in ['.md', '.txt']:
+        if in_ext in ['.md', '.txt', '.mdx']:
             with open(input_path, 'r', encoding='utf-8') as f: content = f.read()
         elif in_ext == '.docx':
             with open(input_path, "rb") as docx_file:
                 content = mammoth.convert_to_html(docx_file).value
-                if out_ext == '.md': content = md_convert(content)
+                if out_ext in ['.md', '.mdx']: content = md_convert(content)
 
         # Enhance
         if enhance_mode and content:
@@ -104,9 +104,9 @@ def convert_docs(input_path, output_path, reduce_mode=False, enhance_mode=False)
 
         # Write
         if out_ext == '.html':
-            html_content = markdown.markdown(content) if in_ext == '.md' else content
+            html_content = markdown.markdown(content) if in_ext in ['.md', '.mdx'] else content
             with open(output_path, 'w', encoding='utf-8') as f: f.write(html_content)
-        elif out_ext in ['.md', '.txt']:
+        elif out_ext in ['.md', '.txt', '.mdx']:
             with open(output_path, 'w', encoding='utf-8') as f: f.write(content)
         elif out_ext == '.pdf' and in_ext == '.docx':
             docx_to_pdf_tool(os.path.abspath(input_path), os.path.abspath(output_path))
@@ -135,7 +135,7 @@ def get_converter(input_ext, output_ext):
     img_exts = {'.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tiff'}
     vid_exts = {'.mp4', '.mkv', '.mov', '.avi', '.webm'}
     data_exts = {'.csv', '.json', '.xlsx'}
-    doc_exts  = {'.docx', '.pdf', '.md', '.html', '.txt'}
+    doc_exts  = {'.docx', '.pdf', '.md', '.html', '.txt', '.mdx'}
 
     if input_ext in img_exts and output_ext in img_exts: return convert_image
     if input_ext in vid_exts and output_ext in vid_exts: return convert_video
