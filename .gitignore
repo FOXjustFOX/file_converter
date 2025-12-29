@@ -1,0 +1,12 @@
+*.png
+*.jpg
+
+venv
+
+__pycache__
+
+build
+
+file_converter.egg-info
+my_converter.egg-info
+.env

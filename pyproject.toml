@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "my-converter"
+version = "1.0.0"
+description = "Universal CLI Converter"
+dependencies = [
+    "pandas",
+    "openpyxl",
+    "markdown",
+    "mammoth",
+    "markdownify",
+    "Pillow",
+    "docx2pdf",
+    "google-genai",
+    "python-dotenv"
+]
+
+[project.scripts]
+# Left side: The command you type in terminal
+# Right side: The python file : The function to run
+f = "convert:main"

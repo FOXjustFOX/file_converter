@@ -1,0 +1,8 @@
+pandas
+markdown
+mammoth
+markdownify
+Pillow
+docx2pdf
+google-genai
+python-dotenv
