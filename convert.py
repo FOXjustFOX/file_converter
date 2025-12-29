@@ -8,6 +8,8 @@ import mammoth
 from markdownify import markdownify as md_convert
 from PIL import Image
 from docx2pdf import convert as docx_to_pdf_tool
+from docx import Document
+from bs4 import BeautifulSoup
 from google import genai
 
 # NEW IMPORT
@@ -110,6 +112,59 @@ def convert_docs(input_path, output_path, reduce_mode=False, enhance_mode=False)
             with open(output_path, 'w', encoding='utf-8') as f: f.write(content)
         elif out_ext == '.pdf' and in_ext == '.docx':
             docx_to_pdf_tool(os.path.abspath(input_path), os.path.abspath(output_path))
+        elif out_ext == '.docx':
+            doc = Document()
+            
+            # Convert MD to HTML first for robust parsing
+            html_content = markdown.markdown(content)
+            soup = BeautifulSoup(html_content, 'html.parser')
+
+            def process_inline(paragraph, element):
+                """Recursively process inline elements like <strong>, <em>, etc."""
+                if element.name is None:
+                    paragraph.add_run(element.string)
+                else:
+                    if element.name == 'strong' or element.name == 'b':
+                        run = paragraph.add_run(element.get_text())
+                        run.bold = True
+                    elif element.name == 'em' or element.name == 'i':
+                        run = paragraph.add_run(element.get_text())
+                        run.italic = True
+                    elif element.name == 'code':
+                        run = paragraph.add_run(element.get_text())
+                        run.font.name = 'Courier New'
+                    else:
+                        # Fallback for other tags, just add text
+                        paragraph.add_run(element.get_text())
+
+            def process_block(element):
+                """Process block elements like <p>, <h1>, <ul>."""
+                if element.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+                    level = int(element.name[1])
+                    p = doc.add_heading(level=level)
+                    for child in element.children:
+                        process_inline(p, child)
+                
+                elif element.name == 'p':
+                    p = doc.add_paragraph()
+                    for child in element.children:
+                        process_inline(p, child)
+                
+                elif element.name in ['ul', 'ol']:
+                    # Handle lists
+                    is_ordered = element.name == 'ol'
+                    style = 'List Number' if is_ordered else 'List Bullet'
+                    for li in element.find_all('li', recursive=False):
+                        p = doc.add_paragraph(style=style)
+                        for child in li.children:
+                            process_inline(p, child)
+
+            # Iterate over top-level elements
+            for element in soup.body.children if soup.body else soup.children:
+                if element.name:
+                    process_block(element)
+
+            doc.save(output_path)
 
     except Exception as e:
         safe_print(f"❌ Doc Error: {e}")

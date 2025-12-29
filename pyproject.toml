@@ -15,7 +15,8 @@ dependencies = [
     "Pillow",
     "docx2pdf",
     "google-genai",
-    "python-dotenv"
+    "python-dotenv",
+    "python-docx"
 ]
 
 [project.scripts]
