@@ -1,117 +1,177 @@
 # 🔄 Universal File Converter
 
-A powerful CLI tool to convert, compress, and enhance various file formats including images, videos, documents, and data files.  
-It includes AI-powered text enhancement using Google Gemini and smart file size reduction.
+A powerful, all-in-one CLI tool designed to convert, compress, and enhance a wide variety of file formats. Built with Python, it leverages standard libraries for data processing, `ffmpeg` for media handling, and Google Gemini AI for content enhancement.
 
-## ✨ Features
+Whether you need to turn a batch of Markdown files into Word docs, optimize a FLAC audio library, or polish a document's grammar, this tool has you covered.
 
-- **Universal Conversion**: Supports Images, Videos, Documents, and Data files.
-- **Smart Compression (`--reduce`)**: Optimize images and videos for smaller file sizes.
-- **AI Enhancement (`--enhance`)**: Improve text quality in documents using Google Gemini.
-- **Batch Processing**: Convert multiple files at once with a progress bar.
-- **Simple CLI**: Easy-to-use command-line interface.
+---
+
+## ✨ Key Features
+
+*   **Universal Conversion**: Seamlessly convert between Image, Video, Audio, Document, and Data formats.
+*   **Media Optimization (`-r`)**: Smart compression for Images, Audio (e.g., FLAC compression, MP3 bitrate), and Video.
+*   **AI Enhancement (`--enhance`)**: Use Google Gemini to professionally edit and improve text content during conversion.
+*   **Granular Progress Tracking**: Real-time progress bars for file batches and detailed, time-based tracking for long media conversions (ETA included).
+*   **Batch Processing**: Handle dozens of files at once with a single command.
+*   **Smart Collision Handling**: Automatically prevents file overwrites by appending `_optimized` or `_enhanced` suffixes when necessary.
+
+---
 
 ## 🛠️ Prerequisites
 
-Before running the tool, ensure you have the following installed:
+Before you begin, ensure you have the following installed:
 
-1.  **Python 3.8+**
-2.  **FFmpeg** (Required for video conversion)
-    - **Mac**: `brew install ffmpeg`
-    - **Windows**: [Download FFmpeg](https://ffmpeg.org/download.html)
-    - **Linux**: `sudo apt install ffmpeg`
-3.  **Gemini API Key** (Optional, for AI enhancement)
-    - Get your key from [Google AI Studio](https://aistudio.google.com/).
-    - Set it as an environment variable:
-      ```bash
-      export GEMINI_API_KEY="your_api_key_here"
-      ```
-    - **Or create a `.env` file** in the project root:
-      ```env
-      GEMINI_API_KEY=your_api_key_here
-      ```
+1.  **Python 3.9+**
+2.  **FFmpeg** (Crucial for Audio & Video conversion)
+    *   **macOS**: `brew install ffmpeg`
+    *   **Windows**: [Download FFmpeg](https://ffmpeg.org/download.html) or `winget install ffmpeg`
+    *   **Linux**: `sudo apt install ffmpeg`
+3.  **Microsoft Word** (macOS/Windows) *or* **LibreOffice** (Linux)
+    *   Required for `.docx` to `.pdf` conversions.
+
+---
 
 ## 📦 Installation
 
-This tool is best installed using **pipx**, which installs it into an isolated environment and makes the `f` command available globally on your system.
-
-### 1. Install pipx (if you haven't already)
-- **Mac**: `brew install pipx`
-- **Windows**: `scoop install pipx` (or `pip install pipx`)
-- **Linux**: `sudo apt install pipx` (or `pip install --user pipx`)
-- *Ensure pipx is in your path:* `pipx ensurepath`
-
-### 2. Install using pipx
-**Option A: Install directly from GitHub (Recommended)**
+### 1. Clone the Repository
 ```bash
-pipx install git+https://github.com/FOXjustFOX/file_converter.git
-```
-*This will download and install the latest version globally.*
-
-**Option B: Install from source, so you can make changes**
-If you have cloned the repository, navigate to the folder, change whatever youwant to change in pyproject.toml and run:
-```bash
-pipx install .
+git clone https://github.com/your-username/file_converter.git
+cd file_converter
 ```
 
-### 3. Verify Installation
-Check if the command works:
+### 2. Set up Virtual Environment (Recommended)
+It's best practice to run this tool in an isolated environment.
+
+**macOS/Linux:**
 ```bash
-f --help
+python3 -m venv venv
+source venv/bin/activate
 ```
 
-### 4. Setup API Key (for AI features)
-To use the AI enhancement features globally, add your API key to your shell configuration (e.g., `~/.zshrc` or `~/.bashrc`):
+**Windows:**
 ```bash
-export GEMINI_API_KEY="your_api_key_here"
-```
-*Alternatively, the tool will also look for a `.env` file in the folder where you run the command.*
-
-## 🚀 Usage
-
-Basic syntax:
-```bash
-f <input_files> <output_destination> [flags]
+python -m venv venv
+.\venv\Scripts\activate
 ```
 
-### 1. Convert specific files to a folder
-Convert image and doc to a specific output folder.
+### 3. Install Dependencies
 ```bash
-f image.png doc.docx ./output_folder
+pip install -r requirements.txt
 ```
 
-### 2. Convert a single file with target format
-Convert markdown to HTML in the same directory.
+### 4. Setup Gemini API Key (Optional)
+To use the AI enhancement features (`-e`), you need a Google Gemini API key.
+1.  Get your key from [Google AI Studio](https://aistudio.google.com/).
+2.  Create a `.env` file in the project root:
+    ```env
+    GEMINI_API_KEY=your_actual_api_key_here
+    ```
+
+---
+
+## 🚀 Usage Guide
+
+The general syntax is:
 ```bash
-f notes.md -t html
+python3 convert.py <input_files> [output_folder] [flags]
 ```
 
-### 3. Compress / Reduce File Size
-Optimize a video file.
+### 🎵 Audio & Video Conversion
+Convert media files easily. The tool uses `ffmpeg` under the hood.
+
+**Convert WAV to FLAC:**
 ```bash
-f video.mov ./output -r
+python3 convert.py recording.wav -t flac
 ```
 
-### 4. AI Text Enhancement
-Convert and polish a document using Gemini AI.
+**Optimize Audio (e.g., Max Compression for FLAC, Standard Bitrate for MP3):**
+*This creates `recording_optimized.flac` if the input is already FLAC.*
 ```bash
-f draft.docx final.md -e
+python3 convert.py recording.flac -r
 ```
 
-## 📂 Supported Formats
+**Convert Video to MP4:**
+```bash
+python3 convert.py movie.mkv -t mp4
+```
 
-| Category | Extensions |
-| :--- | :--- |
-| **Images** | `.jpg`, `.jpeg`, `.png`, `.webp`, `.bmp`, `.tiff` |
-| **Videos** | `.mp4`, `.mkv`, `.mov`, `.avi`, `.webm` |
-| **Documents** | `.docx`, `.pdf`, `.md`, `.html`, `.txt` |
-| **Data** | `.csv`, `.json`, `.xlsx` |
+### 📄 Document Conversion
+Robust conversion between Markdown, Word, and PDF.
 
-## ❗ Troubleshooting
+**Markdown to Word (.docx):**
+*Preserves bold, italics, lists, and headers.*
+```bash
+python3 convert.py notes.md -t docx
+```
 
-- **`command not found: f`**: Make sure you installed the package with `pipx install .` or use `python convert.py` directly.
-- **`FFmpeg is not installed`**: Install FFmpeg for video support (see Prerequisites).
-- **`GEMINI_API_KEY not found`**: Export your API key to use the `-e` flag.
+**Word to PDF:**
+```bash
+python3 convert.py report.docx -t pdf
+```
+
+### ✨ AI Enhancement
+Improve the tone and grammar of your text documents while converting them.
+
+**Enhance text:**
+```bash
+python3 convert.py rough_draft.txt -t md -e
+```
+
+### 📉 Batch Processing
+Convert all images in a folder (using shell globbing) to a specific output directory.
+
+```bash
+python3 convert.py *.png ./converted_images -t jpg
+```
+
+### ⚡ Single File Optimization
+Quickly optimize a file without changing its format.
+
+```bash
+# Creates image_optimized.jpg
+python3 convert.py image.jpg -r
+```
+
+---
+
+## 📂 Supported Formats Matrix
+
+| Category | Extensions | Conversion Notes |
+| :--- | :--- | :--- |
+| **Audio** | `.mp3`, `.wav`, `.aac`, `.flac`, `.ogg`, `.m4a` | Supports bitrate optimization and FLAC compression levels. |
+| **Video** | `.mp4`, `.mkv`, `.mov`, `.avi`, `.webm` | Supports H.264 encoding and CRF optimization. |
+| **Images** | `.jpg`, `.jpeg`, `.png`, `.webp`, `.bmp`, `.tiff` | RGB conversion for compatibility; Quality reduction with `-r`. |
+| **Documents** | `.docx`, `.pdf`*, `.md`, `.mdx`, `.html`, `.txt` | *.pdf output only (from .docx). Markdown supports rich formatting. |
+| **Data** | `.csv`, `.json`, `.xlsx` | Inter-convertible using Pandas. |
+
+---
+
+## 🤝 Collaboration & Development
+
+We welcome contributions! If you want to improve this tool, here is how you can help:
+
+### Project Structure
+*   `convert.py`: The main entry point and logic dispatcher.
+*   `requirements.txt`: Python package dependencies.
+*   `pyproject.toml`: Project metadata and build configuration.
+
+### How to Contribute
+1.  **Fork** the repository.
+2.  **Clone** your fork locally.
+3.  **Create a Branch** for your feature: `git checkout -b feature/amazing-new-format`.
+4.  **Install** dependencies: `pip install -r requirements.txt`.
+5.  **Implement** your changes.
+    *   *Tip:* Check `convert.py` for the `get_converter` function to see how dispatching works.
+    *   *Tip:* Add new logic functions (e.g., `convert_newtype`) and register them in the dispatcher.
+6.  **Test** your changes with sample files.
+7.  **Push** to your branch and open a **Pull Request**.
+
+### Todo List
+*   [ ] Add support for epub conversion.
+*   [ ] Add a GUI interface.
+*   [ ] Add unit tests for all conversion modules.
+
+---
 
 ## 📜 License
 [MIT](LICENSE)
