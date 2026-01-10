@@ -2,6 +2,9 @@ import argparse
 import os
 import sys
 import subprocess
+import time
+import re
+import shutil
 import pandas as pd
 import markdown
 import mammoth
@@ -11,17 +14,143 @@ from docx2pdf import convert as docx_to_pdf_tool
 from docx import Document
 from bs4 import BeautifulSoup
 from google import genai
-
-# NEW IMPORT
-from tqdm import tqdm
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# --- HELPER: Safe Print ---
+# --- PROGRESS BAR HELPER ---
+class ProgressBar:
+    def __init__(self, total, desc="Processing", width=80):
+        self.total = total
+        self.desc = desc
+        self.width = width
+        self.start_time = time.time()
+        self.last_line_len = 0
+        
+    def update(self, current):
+        """Updates the progress bar."""
+        elapsed = time.time() - self.start_time
+        if current > 0 and elapsed > 0:
+            rate = current / elapsed
+            remaining = (self.total - current) / rate if rate > 0 else 0
+        else:
+            remaining = 0
+        
+        progress = current / self.total if self.total > 0 else 0
+        progress = min(max(progress, 0), 1)
+        
+        # Calculate available width for the bar
+        # Format: Desc [======...] 99.9% ETA 00:00:00
+        # Reserve approx 35 chars for text (Desc + % + ETA)
+        # We cap the whole line at self.width
+        
+        # Shorten desc if needed
+        desc_display = self.desc
+        if len(desc_display) > 15:
+            desc_display = desc_display[:12] + "..."
+            
+        percent = progress * 100
+        time_str = time.strftime("%H:%M:%S", time.gmtime(remaining))
+        
+        # Prefix and Suffix
+        prefix = f"{desc_display} ["
+        suffix = f"] {percent:5.1f}% ETA {time_str}"
+        
+        bar_len = self.width - len(prefix) - len(suffix)
+        if bar_len < 5: bar_len = 5 # Minimum bar length
+        
+        filled_len = int(bar_len * progress)
+        bar = "=" * filled_len + "-" * (bar_len - filled_len)
+        
+        line = f"{prefix}{bar}{suffix}"
+        
+        # Pad with spaces to clear previous longer lines
+        if len(line) < self.last_line_len:
+            line += " " * (self.last_line_len - len(line))
+        self.last_line_len = len(line)
+        
+        sys.stdout.write(f"\r{line}")
+        sys.stdout.flush()
+
+    def finish(self):
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+
 def safe_print(msg):
-    """Prints messages without breaking the tqdm progress bar."""
-    tqdm.write(msg)
+    """Prints a message safely, clearing the line first."""
+    sys.stdout.write(f"\r\033[K{msg}\n")
+    sys.stdout.flush()
+
+# --- FFMPEG HELPER ---
+def get_duration(input_path):
+    """Returns duration in seconds using ffmpeg."""
+    try:
+        cmd = ["ffmpeg", "-i", input_path]
+        result = subprocess.run(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        # Search for Duration: HH:MM:SS.mm
+        match = re.search(r"Duration: (\d{2}):(\d{2}):(\d{2}\.\d+)", result.stderr)
+        if match:
+            h, m, s = map(float, match.groups())
+            return h * 3600 + m * 60 + s
+    except Exception:
+        pass
+    return 0
+
+def run_ffmpeg_with_progress(cmd, desc):
+    """Runs ffmpeg command and updates progress bar."""
+    # 1. Get Duration first from input (assumes input is after -i)
+    input_file = None
+    try:
+        idx = cmd.index("-i")
+        if idx + 1 < len(cmd):
+            input_file = cmd[idx + 1]
+    except ValueError:
+        pass
+        
+    duration = get_duration(input_file) if input_file else 0
+    
+    if duration <= 0:
+        # No duration known, just run silently or with generic wait
+        safe_print(f"   (No duration info, running silently...)")
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        return
+
+    # 2. Run with -progress pipe:1
+    # We append flags to ensure progress is output to stdout
+    full_cmd = cmd + ["-progress", "pipe:1", "-nostats"]
+    
+    process = subprocess.Popen(
+        full_cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1
+    )
+    
+    pb = ProgressBar(total=duration, desc=desc)
+    
+    while True:
+        line = process.stdout.readline()
+        if not line and process.poll() is not None:
+            break
+        
+        if line:
+            # Parse out_time_us=1234567
+            if "out_time_us=" in line:
+                try:
+                    parts = line.strip().split("=")
+                    if len(parts) == 2:
+                        us = int(parts[1])
+                        current_sec = us / 1_000_000.0
+                        pb.update(current_sec)
+                except ValueError:
+                    pass
+    
+    pb.finish()
+    
+    if process.returncode != 0:
+        err_out = process.stderr.read()
+        safe_print(f"❌ FFmpeg Error: {err_out[-200:] if err_out else 'Unknown error'}")
 
 # --- AI ENHANCEMENT ---
 def apply_gemini_enhancement(text_content):
@@ -52,6 +181,10 @@ def apply_gemini_enhancement(text_content):
 # --- 1. IMAGE LOGIC ---
 def convert_image(input_path, output_path, reduce_mode=False, enhance_mode=False):
     try:
+        # Dummy progress for image since PIL blocks
+        pb = ProgressBar(total=1, desc="Image")
+        pb.update(0)
+        
         with Image.open(input_path) as img:
             # FIX: Force RGB for JPEGs
             if output_path.lower().endswith(('.jpg', '.jpeg')):
@@ -62,6 +195,9 @@ def convert_image(input_path, output_path, reduce_mode=False, enhance_mode=False
                 img.save(output_path, optimize=True, quality=60)
             else:
                 img.save(output_path)
+        
+        pb.update(1)
+        pb.finish()
     except Exception as e:
         safe_print(f"❌ Image Error: {e}")
 
@@ -72,16 +208,21 @@ def convert_video(input_path, output_path, reduce_mode=False, enhance_mode=False
             safe_print("❌ Error: FFmpeg is not installed.")
             return
         
-        # We don't print "Processing..." here anymore to keep the bar clean
         cmd = ["ffmpeg", "-i", input_path, "-y"]
         
         if reduce_mode:
             cmd.extend(["-vcodec", "libx264", "-crf", "28", "-preset", "fast"])
         
+        # MKV Logic: Preserve all streams (video, audio, subtitles)
+        if output_path.lower().endswith('.mkv'):
+            cmd.extend(["-map", "0"])
+            # If not reducing, default to copying streams for speed/quality if codecs allow?
+            # For now, just ensure we map everything.
+
         cmd.append(output_path)
         
-        # Run silently
-        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        run_ffmpeg_with_progress(cmd, desc="Video")
+        
     except Exception as e:
         safe_print(f"❌ Video Error: {e}")
 
@@ -95,21 +236,25 @@ def convert_audio(input_path, output_path, reduce_mode=False, enhance_mode=False
         cmd = ["ffmpeg", "-i", input_path, "-y"]
         out_ext = os.path.splitext(output_path)[1].lower()
 
+        if out_ext == '.mp3':
+            cmd.extend(["-c:a", "libmp3lame"])
+        elif out_ext == '.ogg':
+            cmd.extend(["-c:a", "libvorbis"])
+
         if reduce_mode:
             if out_ext == '.flac':
-                # Max compression for FLAC
                 cmd.extend(["-compression_level", "12"])
             elif out_ext == '.mp3':
-                # Standard bitrate for MP3
                 cmd.extend(["-b:a", "128k"])
             elif out_ext in ['.m4a', '.aac']:
-                # Standard bitrate for AAC
                 cmd.extend(["-c:a", "aac", "-b:a", "128k"])
+            elif out_ext == '.ogg':
+                cmd.extend(["-q:a", "3"])
         
         cmd.append(output_path)
         
-        # Run silently
-        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        run_ffmpeg_with_progress(cmd, desc="Audio")
+        
     except Exception as e:
         safe_print(f"❌ Audio Error: {e}")
 
@@ -119,6 +264,8 @@ def convert_docs(input_path, output_path, reduce_mode=False, enhance_mode=False)
         in_ext = os.path.splitext(input_path)[1].lower()
         out_ext = os.path.splitext(output_path)[1].lower()
         content = ""
+
+        safe_print(f"   Reading {in_ext}...")
 
         # Extract
         if in_ext in ['.md', '.txt', '.mdx']:
@@ -132,6 +279,8 @@ def convert_docs(input_path, output_path, reduce_mode=False, enhance_mode=False)
         if enhance_mode and content:
             content = apply_gemini_enhancement(content)
 
+        safe_print(f"   Writing {out_ext}...")
+
         # Write
         if out_ext == '.html':
             html_content = markdown.markdown(content) if in_ext in ['.md', '.mdx'] else content
@@ -142,13 +291,10 @@ def convert_docs(input_path, output_path, reduce_mode=False, enhance_mode=False)
             docx_to_pdf_tool(os.path.abspath(input_path), os.path.abspath(output_path))
         elif out_ext == '.docx':
             doc = Document()
-            
-            # Convert MD to HTML first for robust parsing
             html_content = markdown.markdown(content)
             soup = BeautifulSoup(html_content, 'html.parser')
 
             def process_inline(paragraph, element):
-                """Recursively process inline elements like <strong>, <em>, etc."""
                 if element.name is None:
                     paragraph.add_run(element.string)
                 else:
@@ -162,24 +308,19 @@ def convert_docs(input_path, output_path, reduce_mode=False, enhance_mode=False)
                         run = paragraph.add_run(element.get_text())
                         run.font.name = 'Courier New'
                     else:
-                        # Fallback for other tags, just add text
                         paragraph.add_run(element.get_text())
 
             def process_block(element):
-                """Process block elements like <p>, <h1>, <ul>."""
                 if element.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
                     level = int(element.name[1])
                     p = doc.add_heading(level=level)
                     for child in element.children:
                         process_inline(p, child)
-                
                 elif element.name == 'p':
                     p = doc.add_paragraph()
                     for child in element.children:
                         process_inline(p, child)
-                
                 elif element.name in ['ul', 'ol']:
-                    # Handle lists
                     is_ordered = element.name == 'ol'
                     style = 'List Number' if is_ordered else 'List Bullet'
                     for li in element.find_all('li', recursive=False):
@@ -187,7 +328,6 @@ def convert_docs(input_path, output_path, reduce_mode=False, enhance_mode=False)
                         for child in li.children:
                             process_inline(p, child)
 
-            # Iterate over top-level elements
             for element in soup.body.children if soup.body else soup.children:
                 if element.name:
                     process_block(element)
@@ -200,6 +340,7 @@ def convert_docs(input_path, output_path, reduce_mode=False, enhance_mode=False)
 # --- 5. DATA LOGIC ---
 def convert_data(input_path, output_path, reduce_mode=False, enhance_mode=False):
     try:
+        safe_print("   Processing data...")
         in_ext = os.path.splitext(input_path)[1].lower()
         if in_ext == '.csv': df = pd.read_csv(input_path)
         elif in_ext == '.json': df = pd.read_json(input_path)
@@ -216,13 +357,14 @@ def convert_data(input_path, output_path, reduce_mode=False, enhance_mode=False)
 # --- DISPATCHER ---
 def get_converter(input_ext, output_ext):
     img_exts = {'.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tiff'}
-    vid_exts = {'.mp4', '.mkv', '.mov', '.avi', '.webm'}
-    audio_exts = {'.mp3', '.wav', '.aac', '.flac', '.ogg', '.m4a'}
+    vid_exts = {'.mp4', '.mkv', '.mov', '.avi', '.webm', '.ogv', '.ogm'}
+    audio_exts = {'.mp3', '.wav', '.aac', '.flac', '.ogg', '.m4a', '.opus'}
     data_exts = {'.csv', '.json', '.xlsx'}
     doc_exts  = {'.docx', '.pdf', '.md', '.html', '.txt', '.mdx'}
 
     if input_ext in img_exts and output_ext in img_exts: return convert_image
     if input_ext in vid_exts and output_ext in vid_exts: return convert_video
+    if input_ext in vid_exts and output_ext in audio_exts: return convert_audio
     if input_ext in audio_exts and output_ext in audio_exts: return convert_audio
     if input_ext in data_exts and output_ext in data_exts: return convert_data
     if input_ext in doc_exts and output_ext in doc_exts: return convert_docs
@@ -241,7 +383,6 @@ def main():
     inputs = args.args[:-1]
     destination = args.args[-1]
 
-    # Handle single file implicit output
     if len(args.args) == 1 and args.to:
         inputs = [args.args[0]]
         destination = os.path.dirname(args.args[0]) or "."
@@ -249,18 +390,16 @@ def main():
         print("Usage: converter <files> <output_folder> [options]")
         return
 
-    # Create output dir if needed
     output_dir = destination
     if not os.path.exists(output_dir) and len(inputs) > 0 and not os.path.splitext(destination)[1]:
         os.makedirs(output_dir)
 
     target_ext = f".{args.to.lstrip('.')}" if args.to else None
     
-    # --- PROGRESS BAR LOOP ---
-    # We wrap 'inputs' with tqdm to create the visual bar
-    print(f"🚀 Starting conversion of {len(inputs)} files...")
+    total_files = len(inputs)
+    print(f"🚀 Starting conversion of {total_files} files...")
     
-    for input_file in tqdm(inputs, unit="file", ncols=80, colour="green"):
+    for i, input_file in enumerate(inputs, 1):
         if not os.path.exists(input_file):
             safe_print(f"⚠️  Missing: {input_file}")
             continue
@@ -274,8 +413,7 @@ def main():
         else:
             out_file = destination
 
-        # Show current file in description
-        tqdm.write(f"Processing: {os.path.basename(input_file)}")
+        print(f"\n[{i}/{total_files}] File: {os.path.basename(input_file)}")
 
         func = get_converter(in_ext, final_target)
         if func:

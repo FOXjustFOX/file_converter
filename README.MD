@@ -138,8 +138,8 @@ python3 convert.py image.jpg -r
 
 | Category | Extensions | Conversion Notes |
 | :--- | :--- | :--- |
-| **Audio** | `.mp3`, `.wav`, `.aac`, `.flac`, `.ogg`, `.m4a` | Supports bitrate optimization and FLAC compression levels. |
-| **Video** | `.mp4`, `.mkv`, `.mov`, `.avi`, `.webm` | Supports H.264 encoding and CRF optimization. |
+| **Audio** | `.mp3`, `.wav`, `.aac`, `.flac`, `.ogg`, `.m4a`, `.opus` | Supports bitrate optimization and FLAC compression levels. |
+| **Video** | `.mp4`, `.mkv`, `.mov`, `.avi`, `.webm`, `.ogv`, `.ogm` | Supports H.264 encoding and CRF optimization. |
 | **Images** | `.jpg`, `.jpeg`, `.png`, `.webp`, `.bmp`, `.tiff` | RGB conversion for compatibility; Quality reduction with `-r`. |
 | **Documents** | `.docx`, `.pdf`*, `.md`, `.mdx`, `.html`, `.txt` | *.pdf output only (from .docx). Markdown supports rich formatting. |
 | **Data** | `.csv`, `.json`, `.xlsx` | Inter-convertible using Pandas. |
