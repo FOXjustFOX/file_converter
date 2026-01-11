@@ -20,56 +20,86 @@ load_dotenv()
 
 # --- PROGRESS BAR HELPER ---
 class ProgressBar:
-    def __init__(self, total, desc="Processing", width=80):
+    def __init__(self, total, desc="", width=80, unit="it"):
         self.total = total
         self.desc = desc
         self.width = width
+        self.unit = unit
         self.start_time = time.time()
-        self.last_line_len = 0
         
+    def _format_time(self, seconds):
+        if seconds is None or seconds < 0:
+            return "--:--"
+        m, s = divmod(int(seconds), 60)
+        h, m = divmod(m, 60)
+        if h > 0:
+            return f"{h}:{m:02d}:{s:02d}"
+        return f"{m:02d}:{s:02d}"
+
+    def _format_value(self, val):
+        if self.unit == "B":
+            original_val = val
+            for unit in ['', 'K', 'M', 'G', 'T']:
+                if abs(val) < 1024.0:
+                    if unit == '': return f"{val:.0f}"
+                    if val >= 100: return f"{val:.0f}{unit}"
+                    if val >= 10: return f"{val:.1f}{unit}"
+                    return f"{val:.2f}{unit}"
+                val /= 1024.0
+            return f"{val:.1f}P"
+        return f"{val:.2f}" if isinstance(val, float) else str(val)
+
     def update(self, current):
         """Updates the progress bar."""
-        elapsed = time.time() - self.start_time
-        if current > 0 and elapsed > 0:
-            rate = current / elapsed
-            remaining = (self.total - current) / rate if rate > 0 else 0
-        else:
-            remaining = 0
+        now = time.time()
+        elapsed = now - self.start_time
         
         progress = current / self.total if self.total > 0 else 0
         progress = min(max(progress, 0), 1)
-        
-        # Calculate available width for the bar
-        # Format: Desc [======...] 99.9% ETA 00:00:00
-        # Reserve approx 35 chars for text (Desc + % + ETA)
-        # We cap the whole line at self.width
-        
-        # Shorten desc if needed
-        desc_display = self.desc
-        if len(desc_display) > 15:
-            desc_display = desc_display[:12] + "..."
-            
         percent = progress * 100
-        time_str = time.strftime("%H:%M:%S", time.gmtime(remaining))
         
-        # Prefix and Suffix
-        prefix = f"{desc_display} ["
-        suffix = f"] {percent:5.1f}% ETA {time_str}"
+        rate = current / elapsed if elapsed > 0 else 0
+        remaining = (self.total - current) / rate if rate > 0 else 0
         
-        bar_len = self.width - len(prefix) - len(suffix)
-        if bar_len < 5: bar_len = 5 # Minimum bar length
+        elapsed_str = self._format_time(elapsed)
+        remaining_str = self._format_time(remaining)
         
-        filled_len = int(bar_len * progress)
-        bar = "=" * filled_len + "-" * (bar_len - filled_len)
+        curr_str = self._format_value(current)
+        total_str = self._format_value(self.total)
+        
+        if self.unit == "B":
+            rate_str = f"{self._format_value(rate)}iB/s"
+        else:
+            rate_str = f"{rate:.2f}{self.unit}/s"
+            
+        # Format: 30%|███████████▎                          | 432M/1.42G [00:20<00:49, 21.7MiB/s]
+        prefix = f"{int(percent)}%|"
+        if self.desc:
+            prefix = f"{self.desc}: {prefix}"
+            
+        suffix = f"| {curr_str}/{total_str} [{elapsed_str}<{remaining_str}, {rate_str}]"
+        
+        bar_width = self.width - len(prefix) - len(suffix)
+        if bar_width < 10: bar_width = 10
+        
+        filled_len = bar_width * progress
+        n_full = int(filled_len)
+        remainder = filled_len - n_full
+        
+        fractions = [" ", "▏", "▎", "▍", "▌", "▋", "▊", "▉"]
+        
+        bar = "█" * n_full
+        if n_full < bar_width:
+            idx = int(remainder * 8)
+            bar += fractions[idx]
+            bar += " " * (bar_width - n_full - 1)
         
         line = f"{prefix}{bar}{suffix}"
-        
-        # Pad with spaces to clear previous longer lines
-        if len(line) < self.last_line_len:
-            line += " " * (self.last_line_len - len(line))
-        self.last_line_len = len(line)
-        
-        sys.stdout.write(f"\r{line}")
+        sys.stdout.write(f"\r\033[K{line}")
+        sys.stdout.flush()
+
+    def finish(self):
+        sys.stdout.write("\n")
         sys.stdout.flush()
 
     def finish(self):
@@ -127,7 +157,7 @@ def run_ffmpeg_with_progress(cmd, desc):
         bufsize=1
     )
     
-    pb = ProgressBar(total=duration, desc=desc)
+    pb = ProgressBar(total=duration, desc=desc, unit="s")
     
     while True:
         line = process.stdout.readline()
@@ -182,7 +212,7 @@ def apply_gemini_enhancement(text_content):
 def convert_image(input_path, output_path, reduce_mode=False, enhance_mode=False):
     try:
         # Dummy progress for image since PIL blocks
-        pb = ProgressBar(total=1, desc="Image")
+        pb = ProgressBar(total=1, desc="Image", unit="img")
         pb.update(0)
         
         with Image.open(input_path) as img:
